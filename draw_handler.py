@@ -2,6 +2,9 @@ import pandas as pd
 from datetime import datetime
 import os
 import numpy as np
+from openpyxl import Workbook, load_workbook
+from lottery_ml_model import LotteryMLPredictor  # Updated import
+
 def save_draw_to_csv(draw_date, draw_numbers, csv_file='historical_draws.csv'):
     """
     Save draw numbers to CSV file and display them in console
@@ -51,12 +54,103 @@ def save_draw_to_csv(draw_date, draw_numbers, csv_file='historical_draws.csv'):
     except Exception as e:
         print(f"Error saving to CSV: {str(e)}")
 
+def save_predictions_to_excel(predictions, probabilities, timestamp, excel_file='data/processed/predictions.xlsx'):
+    """
+    Save ML predictions and their probabilities to an Excel file in the 'data/processed' directory
+    
+    Args:
+        predictions: List of predicted numbers
+        probabilities: List of probabilities corresponding to the predicted numbers
+        timestamp: Time when the prediction was made
+        excel_file: Path to the Excel file
+    """
+    # Prepare data for Excel
+    data = {
+        'Timestamp': [timestamp] * len(predictions),
+        'Number': predictions,
+        'Probability': probabilities
+    }
+    df = pd.DataFrame(data)
+
+    if os.path.exists(excel_file):
+        # Load existing workbook and sheet
+        book = load_workbook(excel_file)
+        writer = pd.ExcelWriter(excel_file, engine='openpyxl')
+        writer.book = book
+        writer.sheets = {ws.title: ws for ws in book.worksheets}
+        
+        # Get the last row in the existing Excel sheet
+        startrow = writer.sheets['Predictions'].max_row
+        
+        # Append the new data
+        df.to_excel(writer, sheet_name='Predictions', index=False, header=False, startrow=startrow)
+        
+        # Save the workbook
+        writer.close()
+    else:
+        # Create a new workbook and sheet
+        book = Workbook()
+        sheet = book.active
+        sheet.title = 'Predictions'
+        
+        # Write the data
+        with pd.ExcelWriter(excel_file, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Predictions', index=False)
+
+    print(f"\nPredictions saved to {excel_file}")
+
+def train_ml_models(csv_file='historical_draws.csv', models_dir='ml_models'):
+    """
+    Train ML models based on historical data
+    
+    Args:
+        csv_file: Path to the CSV file containing historical data
+        models_dir: Directory to save the trained models
+    """
+    try:
+        # Check if CSV file exists
+        if not os.path.exists(csv_file):
+            print(f"\nError: No historical data found at {csv_file}")
+            return None
+        
+        # Load historical data
+        historical_data = pd.read_csv(csv_file)
+        
+        # Verify data format
+        required_columns = ['date'] + [f'number{i}' for i in range(1, 21)]
+        missing_columns = [col for col in required_columns if col not in historical_data.columns]
+        if missing_columns:
+            print(f"\nError: Missing columns in data: {missing_columns}")
+            return None
+        
+        # Check if we have enough historical data (need at least 6 draws)
+        if len(historical_data) < 6:
+            print(f"\nNot enough historical data. Need at least 6 draws, but only have {len(historical_data)}.")
+            return None
+        
+        print(f"\nFound {len(historical_data)} historical draws in database.")
+        
+        # Initialize predictor
+        predictor = LotteryMLPredictor(numbers_range=(1, 80), numbers_to_draw=20)
+        
+        print("Training new ML models...")
+        # Prepare and train models
+        X, y = predictor.prepare_data(historical_data)
+        predictor.train_models(X, y)
+        
+        # Save models
+        os.makedirs(models_dir, exist_ok=True)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        predictor.save_models(f'{models_dir}/lottery_predictor_{timestamp}')
+        print("Models trained and saved successfully!")
+        
+    except Exception as e:
+        print(f"\nError in training ML models: {str(e)}")
+
 def get_ml_prediction(csv_file='historical_draws.csv'):
     """
     Get prediction from ML model based on historical data
     """
-    from lottery_ml_predictor import LotteryMLPredictor
-    
     try:
         # Check if CSV file exists
         if not os.path.exists(csv_file):
@@ -90,13 +184,13 @@ def get_ml_prediction(csv_file='historical_draws.csv'):
         models_dir = 'ml_models'
         latest_model = None
         if os.path.exists(models_dir):
-            model_files = [f for f in os.listdir(models_dir) if f.endswith('_prob_model.pkl')]
+            model_files = [f for f in os.listdir(models_dir) if f.endswith('_model.pkl')]
             if model_files:
-                latest_model = os.path.join(models_dir, max(model_files).replace('_prob_model.pkl', ''))
+                latest_model = os.path.join(models_dir, max(model_files))
         
         if latest_model:
             print("Loading existing ML models...")
-            predictor.load_models(latest_model)
+            predictor.load_models(latest_model.replace('_model.pkl', ''))
         else:
             print("Training new ML models...")
             # Prepare and train models
@@ -117,11 +211,15 @@ def get_ml_prediction(csv_file='historical_draws.csv'):
         print("Predicted numbers for next draw:", sorted(predicted_numbers))
         
         print("\nTop 10 most likely numbers and their probabilities:")
-        number_probs = [(i+1, prob) for i, prob in enumerate(probabilities)]
+        number_probs = [(number, prob) for number, prob in zip(predicted_numbers, probabilities)]
         number_probs.sort(key=lambda x: x[1], reverse=True)
         for number, prob in number_probs[:10]:
             print(f"Number {number}: {prob:.4f}")
-            
+        
+        # Save predictions to Excel
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        save_predictions_to_excel([num for num, _ in number_probs[:10]], [prob for _, prob in number_probs[:10]], timestamp)
+        
         return predicted_numbers
         
     except Exception as e:
