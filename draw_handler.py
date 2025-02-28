@@ -54,6 +54,31 @@ def save_draw_to_csv(draw_date, draw_numbers, csv_file='C:\\Users\\MihaiNita\\On
     except Exception as e:
         print(f"Error saving to CSV: {str(e)}")
 
+def save_predictions_to_csv(predicted_numbers, probabilities, timestamp, csv_file='data/processed/predictions.csv'):
+    """
+    Save ML predictions and their probabilities to a CSV file
+    
+    Args:
+        predicted_numbers: List of predicted numbers
+        probabilities: List of probabilities corresponding to the predicted numbers
+        timestamp: Time when the prediction was made
+        csv_file: Path to the CSV file
+    """
+    # Prepare data for CSV
+    data = {
+        'Timestamp': [timestamp] * len(predicted_numbers),
+        'Predicted_Numbers': [','.join(map(str, predicted_numbers))],
+        'Probabilities': [','.join(map(str, probabilities))]
+    }
+    df = pd.DataFrame(data)
+
+    if os.path.exists(csv_file):
+        df.to_csv(csv_file, mode='a', header=False, index=False)
+    else:
+        df.to_csv(csv_file, index=False)
+
+    print(f"\nPredictions saved to {csv_file}")
+
 def save_predictions_to_excel(predictions, probabilities, timestamp, excel_file='data/processed/predictions.xlsx'):
     """
     Save ML predictions and their probabilities to an Excel file in the 'data/processed' directory
@@ -224,34 +249,16 @@ def get_ml_prediction(csv_file='C:\\Users\\MihaiNita\\OneDrive - Prime Batteries
             number_probs = [(number, prob) for number, prob in zip(range(1, 81), probabilities)]
             number_probs.sort(key=lambda x: x[1], reverse=True)
             
-            # Save top 10 predictions to Excel
-            predictions_dir = 'src/data/processed'
+            # Save top 10 predictions to CSV
+            predictions_dir = 'data/processed'
             os.makedirs(predictions_dir, exist_ok=True)
             
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            predictions_data = {
-                'Timestamp': [timestamp] * 10,
-                'Number': [num for num, _ in number_probs[:10]],
-                'Probability': [prob for _, prob in number_probs[:10]]
-            }
-            
-            predictions_df = pd.DataFrame(predictions_data)
-            predictions_file = os.path.join(predictions_dir, 'predictions.xlsx')
-            
-            if os.path.exists(predictions_file):
-                with pd.ExcelWriter(predictions_file, mode='a', engine='openpyxl', 
-                                    if_sheet_exists='overlay') as writer:
-                    predictions_df.to_excel(writer, sheet_name='Predictions', 
-                                            header=not os.path.exists(predictions_file),
-                                            index=False)
-            else:
-                predictions_df.to_excel(predictions_file, sheet_name='Predictions', index=False)
+            save_predictions_to_csv(predicted_numbers[:10], probabilities[:10], timestamp)
             
             print("\nPrediction results:")
             for number, prob in number_probs[:10]:
                 print(f"Number {number:2d}: {prob:.4f}")
-            
-            print(f"\nPredictions saved to {predictions_file}")
             
             return predicted_numbers
         else:
@@ -272,3 +279,17 @@ def get_ml_prediction(csv_file='C:\\Users\\MihaiNita\\OneDrive - Prime Batteries
             except Exception as read_error:
                 print(f"Error reading CSV file: {str(read_error)}")
         return None
+# Example usage
+if __name__ == "__main__":
+    # Example draw data
+    draw_date = datetime.now().strftime('%H:%M %d-%m-%Y')
+    draw_numbers = np.random.choice(range(1, 81), 20, replace=False).tolist()
+    
+    # Save draw to CSV
+    save_draw_to_csv(draw_date, draw_numbers)
+    
+    # Train ML models
+    train_ml_models()
+    
+    # Get ML prediction
+    get_ml_prediction()

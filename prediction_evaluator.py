@@ -5,8 +5,8 @@ import os
 
 class PredictionEvaluator:
     def __init__(self):
-        self.predictions_file = 'data/processed/predictions.xlsx'
-        self.historical_file = 'historical_draws.csv'
+        self.predictions_file = 'data/processed/predictions.csv'
+        self.historical_file = 'src/historical_draws.csv'
         self.results_dir = 'data/processed'
         self.results_file = os.path.join(self.results_dir, 'prediction_results.xlsx')
         
@@ -112,25 +112,13 @@ class PredictionEvaluator:
             print(f"Error calculating statistics: {e}")
             return None
 
-    def display_results(self, result):
+    def display_summary_results(self, stats):
         """
-        Display comparison results in a formatted way
+        Display summary of overall performance statistics
         
         Args:
-            result (dict): Comparison results from compare_prediction_with_actual
+            stats (dict): Performance statistics
         """
-        print("\n=== Prediction Evaluation Results ===")
-        print(f"Numbers correctly predicted: {result['num_correct']} out of 20")
-        print(f"Accuracy: {result['accuracy']*100:.1f}%")
-        print("\nCorrect numbers:")
-        print(', '.join(map(str, result['correct_numbers'])))
-        print("\nPredicted numbers:")
-        print(', '.join(map(str, result['predicted_numbers'])))
-        print("\nActual numbers:")
-        print(', '.join(map(str, result['actual_numbers'])))
-        
-        # Display overall statistics
-        stats = self.get_performance_stats()
         if stats:
             print("\n=== Overall Performance ===")
             print(f"Total predictions evaluated: {stats['total_predictions']}")
@@ -138,15 +126,61 @@ class PredictionEvaluator:
             print(f"Best prediction: {stats['best_prediction']} correct numbers")
             print(f"Worst prediction: {stats['worst_prediction']} correct numbers")
             print(f"Average accuracy: {stats['average_accuracy']:.1f}%")
+        else:
+            print("\nNo performance statistics available.")
+
+    def evaluate_past_predictions(self):
+        """
+        Evaluate past predictions against the actual numbers in historical draws.
+        """
+        try:
+            # Load predictions
+            predictions_df = pd.read_csv(self.predictions_file, names=["Timestamp", "Predicted_Numbers", "Probabilities"])
+            if predictions_df.empty:
+                print("\nNo predictions found in the file. Please use option 9 first to generate predictions.")
+                return
+                
+            # Load actual numbers from historical draws
+            if not os.path.exists(self.historical_file):
+                print("\nNo historical draw data found.")
+                return
+                
+            historical_df = pd.read_csv(self.historical_file, header=None)
+            if historical_df.empty:
+                print("\nNo historical draw data to compare.")
+                return
+                
+            # Fixing the date format in the historical data
+            historical_df[20] = pd.to_datetime(historical_df[20], format='%H:%M %d-%m-%Y', errors='coerce')
+            
+            # Iterate over past predictions and compare with actual results
+            for _, row in predictions_df.iterrows():
+                prediction_date = row['Timestamp']
+                predicted_numbers = list(map(int, row['Predicted_Numbers'].strip('[]').split(',')))
+
+                parsed_prediction_date = pd.to_datetime(prediction_date, errors='coerce')
+                if parsed_prediction_date > datetime.now():
+                    continue
+                
+                # Find the corresponding actual draw by date
+                actual_row = historical_df[historical_df[20] == parsed_prediction_date]
+                if actual_row.empty:
+                    continue
+                    
+                actual_numbers = actual_row.iloc[0][:20].values
+                actual_numbers = list(map(int, actual_numbers))
+
+                # Compare and save results
+                self.save_comparison(predicted_numbers, actual_numbers, prediction_date)
+            
+            # Display overall performance statistics
+            stats = self.get_performance_stats()
+            self.display_summary_results(stats)
+                
+        except Exception as e:
+            print(f"\nError in evaluation: {str(e)}")
+            print("Please try again.")
 
 if __name__ == "__main__":
-    # Example usage
     evaluator = PredictionEvaluator()
-    
-    # Example data
-    predicted = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-    actual = [1, 2, 3, 4, 5, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35]
-    
-    # Test comparison
-    result = evaluator.save_comparison(predicted, actual)
-    evaluator.display_results(result)
+    evaluator.evaluate_past_predictions()

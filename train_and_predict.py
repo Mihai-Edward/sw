@@ -3,72 +3,53 @@ import os
 import pandas as pd
 import numpy as np
 from lottery_ml_model import LotteryMLPredictor
-from datetime import datetime
+from datetime import datetime, timedelta
 
 def load_data(file_path):
-    """Load historical lottery data from CSV"""
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Data file {file_path} not found")
     
     df = pd.read_csv(file_path)
-    
-    # Process the date column
     try:
         df['date'] = pd.to_datetime(df['date'], format='%H:%M %d-%m-%Y', errors='coerce')
         df.loc[df['date'].isna(), 'date'] = pd.to_datetime(df.loc[df['date'].isna(), 'date'], errors='coerce')
     except Exception as e:
         print(f"Warning: Date conversion issue: {e}")
     
-    # Ensure all number columns are present and correctly typed
     number_cols = [f'number{i+1}' for i in range(20)]
     try:
         df[number_cols] = df[number_cols].astype(float)
     except Exception as e:
         print(f"Warning: Could not process number columns: {e}")
     
-    # Fill any remaining NaN values with the mode (most common value) of each column
     for col in number_cols:
         if col in df.columns:
             df[col] = df[col].fillna(df[col].mode()[0] if not df[col].mode().empty else 0)
     
     return df
 
-def prepare_data(df):
-    """Prepare data for training"""
-    # Get all number columns
-    number_cols = [f'number{i}' for i in range(1, 21)]
-    required_cols = ['date'] + number_cols
+def get_next_draw_time(current_time):
+    minutes = (current_time.minute // 5 + 1) * 5
+    next_draw_time = current_time.replace(minute=0, second=0, microsecond=0) + timedelta(minutes=minutes)
+    return next_draw_time
+
+def save_predictions_to_csv(predicted_numbers, probabilities, next_draw_time, file_path):
+    data = {
+        'Timestamp': [next_draw_time.strftime('%Y-%m-%d %H:%M:%S')],
+        'Predicted Numbers': [','.join(map(str, predicted_numbers))],
+        'Probabilities': [','.join(map(str, [probabilities[num - 1] for num in predicted_numbers]))]
+    }
+    df = pd.DataFrame(data)
     
-    missing_cols = [col for col in required_cols if col not in df.columns]
-    if missing_cols:
-        raise KeyError(f"Missing columns in data: {missing_cols}")
-    
-    # Create feature matrix X from the number columns and date features
-    X = df[number_cols].astype(float)
-    
-    # Add date features
-    df['day_of_week'] = df['date'].dt.dayofweek
-    df['month'] = df['date'].dt.month
-    df['day_of_year'] = df['date'].dt.dayofyear
-    df['days_since_first_draw'] = (df['date'] - df['date'].min()).dt.days
-    
-    date_features = df[['day_of_week', 'month', 'day_of_year', 'days_since_first_draw']].astype(float)
-    X = pd.concat([X, date_features], axis=1)
-    
-    # Create target matrix y (80 columns, one for each possible number)
-    y = np.zeros((len(df), 80))
-    for i in range(80):
-        number = i + 1
-        y[:, i] = (X.iloc[:, :20] == number).any(axis=1).astype(int)
-    
-    return X.values, y
+    if not os.path.exists(file_path):
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        df.to_csv(file_path, index=False)
+    else:
+        df.to_csv(file_path, mode='a', header=not os.path.exists(file_path), index=False)
 
 def main():
     try:
-        # Initialize predictor
         predictor = LotteryMLPredictor(numbers_range=(1, 80), numbers_to_draw=20)
-        
-        # Check if there is a previously saved model
         models_dir = 'src/ml_models'
         if not os.path.exists(models_dir):
             os.makedirs(models_dir)
@@ -88,64 +69,50 @@ def main():
                     print(f"Error loading model: {e}")
         
         if not model_loaded:
-            # Load historical data
-            data_file = 'C:/Users/MihaiNita/OneDrive - Prime Batteries/Desktop/proiectnow/Versiune1.4/src/historical_draws.csv'
+            data_file = 'src/historical_draws.csv'
             print(f"Loading data from {data_file}...")
             historical_data = load_data(data_file)
             
-            # Prepare data for training
             print("Preparing training data...")
-            X, y = prepare_data(historical_data)
+            X, y = predictor.prepare_data(historical_data)
             
-            # Check the shapes of X and y
             print(f"Shape of X: {X.shape}")
             print(f"Shape of y: {y.shape}")
             
-            # Split into training and testing sets
             from sklearn.model_selection import train_test_split
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=0.2, random_state=42
-            )
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
             
-            # Train models
             print("Training models...")
             predictor.train_models(X_train, y_train)
             
-            # Save models
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             model_path = f'{models_dir}/lottery_predictor_{timestamp}'
             predictor.save_models(model_path)
             
-            # Save the timestamp to a file for later use
             with open(model_timestamp_file, 'w') as f:
                 f.write(timestamp)
             
             print("\nModel training and saving complete.\n")
+        else:
+            # Load historical data if the model is already trained
+            data_file = 'src/historical_draws.csv'
+            print(f"Loading data from {data_file}...")
+            historical_data = load_data(data_file)
         
-        # Predict the next draw
         print("Generating ML prediction for next draw...")
-        # Here you need to provide recent draws to the predict function
-        # For demonstration, let's assume recent_draws is the last 5 draws from historical data
         recent_draws = historical_data.tail(5).copy()
-        number_cols = [f'number{i}' for i in range(1, 21)]
-        recent_X = recent_draws[number_cols].astype(float)
+        predicted_numbers, probabilities = predictor.predict(recent_draws)
         
-        # Add date features to recent_X
-        recent_draws['day_of_week'] = recent_draws['date'].dt.dayofweek
-        recent_draws['month'] = recent_draws['date'].dt.month
-        recent_draws['day_of_year'] = recent_draws['date'].dt.dayofyear
-        recent_draws['days_since_first_draw'] = (recent_draws['date'] - historical_data['date'].min()).dt.days
-        date_features = recent_draws[['day_of_week', 'month', 'day_of_year', 'days_since_first_draw']].astype(float)
-        recent_X = pd.concat([recent_X, date_features], axis=1)
-        
-        predicted_numbers, probabilities = predictor.predict(recent_X)
-        
-        print(f"Predicted numbers for the next draw: {predicted_numbers}")
-        print(f"Prediction probabilities: {probabilities}")
+        formatted_numbers = ','.join(map(str, predicted_numbers))
+        next_draw_time = get_next_draw_time(datetime.now())
+        print(f"Predicted numbers for the next draw at {next_draw_time.strftime('%H:%M %d-%m-%Y')}: {formatted_numbers}")
+        print(f"Prediction probabilities: {[probabilities[num - 1] for num in predicted_numbers]}")
+
+        predictions_file = 'data/processed/predictions.csv'
+        save_predictions_to_csv(predicted_numbers, probabilities, next_draw_time, predictions_file)
         
     except Exception as e:
         print(f"\nError: {str(e)}")
-        print("\nDebug information:")
         if 'historical_data' in locals():
             print("\nFirst few rows of processed data:")
             print(historical_data.head())
