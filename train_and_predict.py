@@ -43,16 +43,25 @@ def prepare_data(df):
     if missing_cols:
         raise KeyError(f"Missing columns in data: {missing_cols}")
     
-    # Create feature matrix X from the number columns
+    # Create feature matrix X from the number columns and date features
     X = df[number_cols].astype(float)
+    
+    # Add date features
+    df['day_of_week'] = df['date'].dt.dayofweek
+    df['month'] = df['date'].dt.month
+    df['day_of_year'] = df['date'].dt.dayofyear
+    df['days_since_first_draw'] = (df['date'] - df['date'].min()).dt.days
+    
+    date_features = df[['day_of_week', 'month', 'day_of_year', 'days_since_first_draw']].astype(float)
+    X = pd.concat([X, date_features], axis=1)
     
     # Create target matrix y (80 columns, one for each possible number)
     y = np.zeros((len(df), 80))
     for i in range(80):
         number = i + 1
-        y[:, i] = (X == number).any(axis=1).astype(int)
+        y[:, i] = (X.iloc[:, :20] == number).any(axis=1).astype(int)
     
-    return X, y
+    return X.values, y
 
 def main():
     try:
@@ -117,9 +126,18 @@ def main():
         print("Generating ML prediction for next draw...")
         # Here you need to provide recent draws to the predict function
         # For demonstration, let's assume recent_draws is the last 5 draws from historical data
-        recent_draws = historical_data.tail(5)
+        recent_draws = historical_data.tail(5).copy()
         number_cols = [f'number{i}' for i in range(1, 21)]
         recent_X = recent_draws[number_cols].astype(float)
+        
+        # Add date features to recent_X
+        recent_draws['day_of_week'] = recent_draws['date'].dt.dayofweek
+        recent_draws['month'] = recent_draws['date'].dt.month
+        recent_draws['day_of_year'] = recent_draws['date'].dt.dayofyear
+        recent_draws['days_since_first_draw'] = (recent_draws['date'] - historical_data['date'].min()).dt.days
+        date_features = recent_draws[['day_of_week', 'month', 'day_of_year', 'days_since_first_draw']].astype(float)
+        recent_X = pd.concat([recent_X, date_features], axis=1)
+        
         predicted_numbers, probabilities = predictor.predict(recent_X)
         
         print(f"Predicted numbers for the next draw: {predicted_numbers}")

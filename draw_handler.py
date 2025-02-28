@@ -123,6 +123,13 @@ def train_ml_models(csv_file='C:\\Users\\MihaiNita\\OneDrive - Prime Batteries\\
             print(f"\nError: Missing columns in data: {missing_columns}")
             return None
         
+        # Ensure datetime conversion and feature extraction
+        historical_data['date'] = pd.to_datetime(historical_data['date'], errors='coerce')
+        historical_data['day_of_week'] = historical_data['date'].dt.dayofweek
+        historical_data['month'] = historical_data['date'].dt.month
+        historical_data['day_of_year'] = historical_data['date'].dt.dayofyear
+        historical_data['days_since_first_draw'] = (historical_data['date'] - historical_data['date'].min()).dt.days
+        
         # Check if we have enough historical data (need at least 6 draws)
         if len(historical_data) < 6:
             print(f"\nNot enough historical data. Need at least 6 draws, but only have {len(historical_data)}.")
@@ -161,6 +168,13 @@ def get_ml_prediction(csv_file='C:\\Users\\MihaiNita\\OneDrive - Prime Batteries
         # Load historical data
         historical_data = pd.read_csv(csv_file)
         
+        # Ensure datetime conversion and feature extraction
+        historical_data['date'] = pd.to_datetime(historical_data['date'], errors='coerce')
+        historical_data['day_of_week'] = historical_data['date'].dt.dayofweek
+        historical_data['month'] = historical_data['date'].dt.month
+        historical_data['day_of_year'] = historical_data['date'].dt.dayofyear
+        historical_data['days_since_first_draw'] = (historical_data['date'] - historical_data['date'].min()).dt.days
+        
         # Initialize predictor
         predictor = LotteryMLPredictor(numbers_range=(1, 80), numbers_to_draw=20)
         
@@ -193,11 +207,11 @@ def get_ml_prediction(csv_file='C:\\Users\\MihaiNita\\OneDrive - Prime Batteries
             
             # Prepare recent draws for prediction
             number_cols = [f'number{i}' for i in range(1, 21)]
-            recent_draws = historical_data.tail(5)[number_cols]
+            recent_draws = historical_data.tail(5)[number_cols + ['date', 'day_of_week', 'month', 'day_of_year', 'days_since_first_draw']]
             
             # Ensure recent_draws has the correct shape
-            if recent_draws.shape != (5, 20):
-                raise ValueError("Recent draws data shape is incorrect. Expected (5, 20).")
+            if recent_draws.shape[1] != 25:  # 20 number columns + 5 date feature columns
+                raise ValueError("Recent draws data shape is incorrect. Expected 25 columns.")
             
             # Generate prediction
             predicted_numbers, probabilities = predictor.predict(recent_draws)

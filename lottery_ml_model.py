@@ -77,7 +77,7 @@ class LotteryMLPredictor:
                 
                 try:
                     # Create feature vector from window
-                    feature_vector = self._create_feature_vector(window[number_cols])
+                    feature_vector = self._create_feature_vector(window[number_cols], window['date'])
                     features.append(feature_vector)
                     
                     # Create label vector (one-hot encoding for next draw numbers)
@@ -98,12 +98,13 @@ class LotteryMLPredictor:
             print(f"Error in prepare_data: {str(e)}")
             raise
         
-    def _create_feature_vector(self, window_numbers):
+    def _create_feature_vector(self, window_numbers, window_dates):
         """
         Create features from a window of previous draws.
         
         Args:
             window_numbers (pd.DataFrame): DataFrame containing previous draws
+            window_dates (pd.Series): Series containing the dates of the previous draws
             
         Returns:
             np.array: Feature vector
@@ -143,6 +144,15 @@ class LotteryMLPredictor:
                 sum(1 for i in range(len(last_draw)-1) if last_draw[i+1] - last_draw[i] == 1),  # Consecutive numbers
                 len(set(last_draw) & set(range(1, 81, 2))),  # Odd numbers
                 len(set(last_draw) & set(range(0, 81, 2)))   # Even numbers
+            ])
+            
+            # 5. Date features
+            window_dates = pd.to_datetime(window_dates)
+            features.extend([
+                window_dates.iloc[-1].dayofweek,  # Day of the week of the last draw
+                window_dates.iloc[-1].month,      # Month of the last draw
+                window_dates.iloc[-1].dayofyear,  # Day of the year of the last draw
+                (window_dates.iloc[-1] - window_dates.min()).days  # Days since the first draw in the window
             ])
             
             return np.array(features)
@@ -197,7 +207,7 @@ class LotteryMLPredictor:
             number_cols = [col for col in recent_draws.columns if col.startswith('number')]
             
             # Create feature vector
-            feature_vector = self._create_feature_vector(recent_draws[number_cols])
+            feature_vector = self._create_feature_vector(recent_draws[number_cols], recent_draws['date'])
             feature_vector = self.scaler.transform([feature_vector])
             
             # Get predictions from both models
