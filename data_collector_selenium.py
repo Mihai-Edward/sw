@@ -33,7 +33,7 @@ class KinoDataCollector:
                 continue
         return numbers
 
-    def save_draw(self, draw_date, numbers, csv_file='historical_draws.csv'):
+    def save_draw(self, draw_date, numbers, csv_file='C:\\Users\\MihaiNita\\OneDrive - Prime Batteries\\Desktop\\proiectnow\\Versiune1.4\\src\\historical_draws.csv'):
         """Save draw to CSV file in the correct format"""
         # Ensure exactly 20 numbers
         if len(numbers) > 20:
@@ -126,7 +126,7 @@ class KinoDataCollector:
                 print("\nNo draws found. Debug information:")
                 table = driver.find_element(By.CSS_SELECTOR, "#all_results > tbody")
                 print("\nTable HTML:")
-                print(table.get_attribute('innerHTML')[:1000])
+                print(table.getAttribute('innerHTML')[:1000])
                 return []
 
         except Exception as e:
@@ -146,4 +146,4 @@ if __name__ == "__main__":
     if draws:
         print("\nCollected draws:")
         for draw_date, numbers in draws:
-            print(f"Date: {draw_date}, Numbers: {numbers}")
+            print(f"Date: {draw_date}, Numbers: {', '.join(map(str, numbers))}")

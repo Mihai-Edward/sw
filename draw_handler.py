@@ -5,7 +5,7 @@ import numpy as np
 from openpyxl import Workbook, load_workbook
 from lottery_ml_model import LotteryMLPredictor  # Updated import
 
-def save_draw_to_csv(draw_date, draw_numbers, csv_file='historical_draws.csv'):
+def save_draw_to_csv(draw_date, draw_numbers, csv_file='C:\\Users\\MihaiNita\\OneDrive - Prime Batteries\\Desktop\\proiectnow\\Versiune1.4\\src\\historical_draws.csv'):
     """
     Save draw numbers to CSV file and display them in console
     
@@ -99,7 +99,7 @@ def save_predictions_to_excel(predictions, probabilities, timestamp, excel_file=
 
     print(f"\nPredictions saved to {excel_file}")
 
-def train_ml_models(csv_file='historical_draws.csv', models_dir='ml_models'):
+def train_ml_models(csv_file='C:\\Users\\MihaiNita\\OneDrive - Prime Batteries\\Desktop\\proiectnow\\Versiune1.4\\src\\historical_draws.csv', models_dir='src/ml_models'):
     """
     Train ML models based on historical data
     
@@ -147,7 +147,7 @@ def train_ml_models(csv_file='historical_draws.csv', models_dir='ml_models'):
     except Exception as e:
         print(f"\nError in training ML models: {str(e)}")
 
-def get_ml_prediction(csv_file='historical_draws.csv'):
+def get_ml_prediction(csv_file='C:\\Users\\MihaiNita\\OneDrive - Prime Batteries\\Desktop\\proiectnow\\Versiune1.4\\src\\historical_draws.csv'):
     """
     Get prediction from ML model based on historical data
     """
@@ -165,13 +165,13 @@ def get_ml_prediction(csv_file='historical_draws.csv'):
         predictor = LotteryMLPredictor(numbers_range=(1, 80), numbers_to_draw=20)
         
         # Load existing models if available
-        models_dir = 'ml_models'
+        models_dir = 'src/ml_models'
         model_base = None
         
         # Try to read the timestamp from the file first
-        if os.path.exists('model_timestamp.txt'):
+        if os.path.exists('src/model_timestamp.txt'):
             try:
-                with open('model_timestamp.txt', 'r') as f:
+                with open('src/model_timestamp.txt', 'r') as f:
                     timestamp = f.read().strip()
                     model_base = f'{models_dir}/lottery_predictor_{timestamp}'
                     print(f"Loading model from {model_base}")
@@ -187,13 +187,17 @@ def get_ml_prediction(csv_file='historical_draws.csv'):
                 model_base = os.path.join(models_dir, latest.replace('_model.pkl', ''))
                 print(f"Found latest model: {model_base}")
         
-        if model_base and os.path.exists(f"{model_base}_1_model.pkl"):
+        if model_base and os.path.exists(f"{model_base}_pattern_model.pkl"):
             print("Loading existing ML models...")
             predictor.load_models(model_base)
             
             # Prepare recent draws for prediction
             number_cols = [f'number{i}' for i in range(1, 21)]
             recent_draws = historical_data.tail(5)[number_cols]
+            
+            # Ensure recent_draws has the correct shape
+            if recent_draws.shape != (5, 20):
+                raise ValueError("Recent draws data shape is incorrect. Expected (5, 20).")
             
             # Generate prediction
             predicted_numbers, probabilities = predictor.predict(recent_draws)
@@ -203,11 +207,11 @@ def get_ml_prediction(csv_file='historical_draws.csv'):
             print("Predicted numbers for next draw:", sorted(predicted_numbers))
             
             print("\nTop 10 most likely numbers and their probabilities:")
-            number_probs = [(number, prob) for number, prob in zip(range(1, 81), probabilities[0])]
+            number_probs = [(number, prob) for number, prob in zip(range(1, 81), probabilities)]
             number_probs.sort(key=lambda x: x[1], reverse=True)
             
             # Save top 10 predictions to Excel
-            predictions_dir = 'data/processed'
+            predictions_dir = 'src/data/processed'
             os.makedirs(predictions_dir, exist_ok=True)
             
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -222,10 +226,10 @@ def get_ml_prediction(csv_file='historical_draws.csv'):
             
             if os.path.exists(predictions_file):
                 with pd.ExcelWriter(predictions_file, mode='a', engine='openpyxl', 
-                                  if_sheet_exists='overlay') as writer:
+                                    if_sheet_exists='overlay') as writer:
                     predictions_df.to_excel(writer, sheet_name='Predictions', 
-                                         header=not os.path.exists(predictions_file),
-                                         index=False)
+                                            header=not os.path.exists(predictions_file),
+                                            index=False)
             else:
                 predictions_df.to_excel(predictions_file, sheet_name='Predictions', index=False)
             

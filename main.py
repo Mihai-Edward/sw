@@ -7,14 +7,14 @@ import pandas as pd
 
 def ensure_directories():
     """Create necessary directories if they don't exist"""
-    directories = ['ml_models', 'data/processed']
+    directories = ['src/ml_models', 'src/data/processed']
     for directory in directories:
         os.makedirs(directory, exist_ok=True)
 
 def check_and_train_model():
     """Check if model exists and is trained, if not train it"""
-    model_timestamp_file = 'model_timestamp.txt'
-    models_dir = 'ml_models'
+    model_timestamp_file = 'src/model_timestamp.txt'
+    models_dir = 'src/ml_models'
     
     needs_training = False
     
@@ -138,7 +138,7 @@ def main():
                     evaluator = PredictionEvaluator()
                     
                     # Load the most recent prediction
-                    predictions_file = 'data/processed/predictions.xlsx'
+                    predictions_file = 'src/data/processed/predictions.xlsx'
                     if not os.path.exists(predictions_file):
                         print("\nNo predictions found. Please use option 9 first to generate predictions.")
                         continue

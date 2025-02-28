@@ -4,7 +4,6 @@ import pandas as pd
 import numpy as np
 from lottery_ml_model import LotteryMLPredictor
 from datetime import datetime
-import ast
 
 def load_data(file_path):
     """Load historical lottery data from CSV"""
@@ -13,56 +12,21 @@ def load_data(file_path):
     
     df = pd.read_csv(file_path)
     
-    # Handle date column with mixed formats
+    # Process the date column
     try:
-        # First try to convert dates that are in DD-MM-YYYY format
-        df['date'] = pd.to_datetime(df['date'], format='%d-%m-%Y', errors='coerce')
-        
-        # For any dates that failed (resulted in NaT), try the other format
-        mask = df['date'].isna()
-        df.loc[mask, 'date'] = pd.to_datetime(df.loc[mask, 'date'], format='%Y-%m-%d', errors='coerce')
-        
-        # For any remaining NaT values, try parsing with mixed format
-        mask = df['date'].isna()
-        df.loc[mask, 'date'] = pd.to_datetime(df.loc[mask, 'date'], format='mixed')
-        
+        df['date'] = pd.to_datetime(df['date'], format='%H:%M %d-%m-%Y', errors='coerce')
+        df.loc[df['date'].isna(), 'date'] = pd.to_datetime(df.loc[df['date'].isna(), 'date'], errors='coerce')
     except Exception as e:
         print(f"Warning: Date conversion issue: {e}")
     
-    # Clean up the data structure
-    if 'numbers' in df.columns:
-        # If we have a 'numbers' column, use it to fill in the individual number columns
-        try:
-            # Convert string representation of list to actual list
-            df['numbers'] = df['numbers'].apply(ast.literal_eval)
-            
-            # Create or update the individual number columns
-            for i in range(20):
-                col_name = f'number{i+1}'
-                if col_name not in df.columns:
-                    df[col_name] = np.nan
-                df[col_name] = df['numbers'].apply(lambda x: x[i] if len(x) > i else np.nan)
-        except Exception as e:
-            print(f"Warning: Could not process 'numbers' column: {e}")
-    else:
-        # Handle the case where numbers are not in a list format
-        try:
-            number_cols = [f'number{i+1}' for i in range(20)]
-            for col in number_cols:
-                if col not in df.columns:
-                    df[col] = np.nan
-            
-            # Assuming the numbers are in the second column and separated by commas
-            df[number_cols] = df.iloc[:, 1].str.split(',', expand=True).astype(float)
-        except Exception as e:
-            print(f"Warning: Could not process numbers: {e}")
-    
-    # Drop the 'numbers' column as we now have individual columns
-    if 'numbers' in df.columns:
-        df = df.drop('numbers', axis=1)
+    # Ensure all number columns are present and correctly typed
+    number_cols = [f'number{i+1}' for i in range(20)]
+    try:
+        df[number_cols] = df[number_cols].astype(float)
+    except Exception as e:
+        print(f"Warning: Could not process number columns: {e}")
     
     # Fill any remaining NaN values with the mode (most common value) of each column
-    number_cols = [f'number{i+1}' for i in range(1, 21)]
     for col in number_cols:
         if col in df.columns:
             df[col] = df[col].fillna(df[col].mode()[0] if not df[col].mode().empty else 0)
@@ -96,11 +60,11 @@ def main():
         predictor = LotteryMLPredictor(numbers_range=(1, 80), numbers_to_draw=20)
         
         # Check if there is a previously saved model
-        models_dir = 'ml_models'
+        models_dir = 'src/ml_models'
         if not os.path.exists(models_dir):
             os.makedirs(models_dir)
         
-        model_timestamp_file = 'model_timestamp.txt'
+        model_timestamp_file = 'src/model_timestamp.txt'
         model_loaded = False
         
         if os.path.exists(model_timestamp_file):
@@ -116,7 +80,7 @@ def main():
         
         if not model_loaded:
             # Load historical data
-            data_file = 'C:/Users/MihaiNita/OneDrive - Prime Batteries/Desktop/proiectnow/Versiune1.4/historical_draws.csv'
+            data_file = 'C:/Users/MihaiNita/OneDrive - Prime Batteries/Desktop/proiectnow/Versiune1.4/src/historical_draws.csv'
             print(f"Loading data from {data_file}...")
             historical_data = load_data(data_file)
             
@@ -154,7 +118,9 @@ def main():
         # Here you need to provide recent draws to the predict function
         # For demonstration, let's assume recent_draws is the last 5 draws from historical data
         recent_draws = historical_data.tail(5)
-        predicted_numbers, probabilities = predictor.predict(recent_draws)
+        number_cols = [f'number{i}' for i in range(1, 21)]
+        recent_X = recent_draws[number_cols].astype(float)
+        predicted_numbers, probabilities = predictor.predict(recent_X)
         
         print(f"Predicted numbers for the next draw: {predicted_numbers}")
         print(f"Prediction probabilities: {probabilities}")

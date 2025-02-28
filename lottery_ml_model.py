@@ -3,7 +3,6 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neural_network import MLPClassifier
-from sklearn.impute import SimpleImputer
 import joblib
 from datetime import datetime
 import os
@@ -22,17 +21,16 @@ class LotteryMLPredictor:
         
         # Initialize the models
         self.scaler = StandardScaler()
-        self.imputer = SimpleImputer(strategy='mean')  # Imputer to handle NaN values
         self.probabilistic_models = [GaussianNB() for _ in range(numbers_range[1])]
         self.pattern_model = MLPClassifier(
-            hidden_layer_sizes=(128, 64),  # Reduced layers for faster training
+            hidden_layer_sizes=(256, 128, 64),  # Three layers for deep learning
             activation='relu',
             solver='adam',
-            max_iter=500,  # Reduced iterations for faster training
+            max_iter=1000,
             random_state=42,
             early_stopping=True,
             validation_fraction=0.1,
-            n_iter_no_change=10,  # Reduced patience for early stopping
+            n_iter_no_change=20,
             verbose=True
         )
         
@@ -162,9 +160,6 @@ class LotteryMLPredictor:
             y_train (np.array): Training labels
         """
         try:
-            print("Handling missing values...")
-            X_train = self.imputer.fit_transform(X_train)
-            
             print("Scaling features...")
             X_train_scaled = self.scaler.fit_transform(X_train)
             
@@ -203,8 +198,7 @@ class LotteryMLPredictor:
             
             # Create feature vector
             feature_vector = self._create_feature_vector(recent_draws[number_cols])
-            feature_vector = self.imputer.transform([feature_vector])
-            feature_vector = self.scaler.transform(feature_vector)
+            feature_vector = self.scaler.transform([feature_vector])
             
             # Get predictions from both models
             prob_preds = [model.predict_proba(feature_vector)[0][1] for model in self.probabilistic_models]
@@ -242,7 +236,6 @@ class LotteryMLPredictor:
                 joblib.dump(model, f'{path_prefix}_prob_model_{i}.pkl')
             joblib.dump(self.pattern_model, f'{path_prefix}_pattern_model.pkl')
             joblib.dump(self.scaler, f'{path_prefix}_scaler.pkl')
-            joblib.dump(self.imputer, f'{path_prefix}_imputer.pkl')
             
             # Save metadata
             metadata = {
@@ -270,7 +263,6 @@ class LotteryMLPredictor:
             self.probabilistic_models = [joblib.load(f'{path_prefix}_prob_model_{i}.pkl') for i in range(self.numbers_range[1])]
             self.pattern_model = joblib.load(f'{path_prefix}_pattern_model.pkl')
             self.scaler = joblib.load(f'{path_prefix}_scaler.pkl')
-            self.imputer = joblib.load(f'{path_prefix}_imputer.pkl')
             
             # Load metadata
             metadata = joblib.load(f'{path_prefix}_metadata.pkl')
