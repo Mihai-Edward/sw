@@ -6,6 +6,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from datetime import datetime
 import pytz
 import time
+import pandas as pd
+import os
 
 class KinoDataCollector:
     def __init__(self, user_login="777MNM", debug=True):
@@ -30,6 +32,34 @@ class KinoDataCollector:
             except ValueError:
                 continue
         return numbers
+
+    def save_draw(self, draw_date, numbers, csv_file='historical_draws.csv'):
+        """Save draw to CSV file in the correct format"""
+        # Ensure exactly 20 numbers
+        if len(numbers) > 20:
+            numbers = sorted(numbers)[:20]
+        elif len(numbers) < 20:
+            print(f"Warning: Draw has less than 20 numbers: {len(numbers)}")
+            return
+        
+        # Create dictionary with individual number columns
+        data = {'date': draw_date}
+        for i, num in enumerate(sorted(numbers), 1):
+            data[f'number{i}'] = num
+        
+        # Create DataFrame
+        draw_df = pd.DataFrame([data])
+        
+        # Save to CSV
+        if os.path.exists(csv_file):
+            existing_df = pd.read_csv(csv_file)
+            if draw_date not in existing_df['date'].values:
+                combined_df = pd.concat([existing_df, draw_df], ignore_index=True)
+                combined_df.to_csv(csv_file, index=False)
+                print(f"Draw {draw_date} saved to {csv_file}")
+        else:
+            draw_df.to_csv(csv_file, index=False)
+            print(f"Created new file {csv_file} with draw {draw_date}")
 
     def fetch_latest_draws(self, num_draws=24, delay=1):
         driver = None
@@ -77,6 +107,8 @@ class KinoDataCollector:
 
                     if len(numbers) >= 20:
                         draws.append((draw_date, sorted(numbers)))
+                        # Save each draw as it's collected
+                        self.save_draw(draw_date, numbers)
                         if len(draws) >= num_draws:
                             break
 
@@ -107,3 +139,11 @@ class KinoDataCollector:
                     driver.quit()
                 except:
                     pass
+
+if __name__ == "__main__":
+    collector = KinoDataCollector()
+    draws = collector.fetch_latest_draws()
+    if draws:
+        print("\nCollected draws:")
+        for draw_date, numbers in draws:
+            print(f"Date: {draw_date}, Numbers: {numbers}")

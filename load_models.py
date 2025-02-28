@@ -10,7 +10,16 @@ def load_data(file_path):
     
     # Convert date column if it exists
     if 'date' in df.columns:
-        df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
+        # Try parsing with the first format
+        df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d', errors='coerce')
+        
+        # For rows where parsing failed, try the second format
+        mask = df['date'].isna()
+        if mask.any():
+            df.loc[mask, 'date'] = pd.to_datetime(df.loc[mask, 'date'], format='%H:%M %d-%m-%Y', errors='coerce')
+    
+    # Drop rows with NaNs in the 'numbers' column
+    df = df.dropna(subset=['numbers'])
     
     # Convert 'numbers' column from string representation of lists to actual lists
     if 'numbers' in df.columns:
@@ -18,11 +27,21 @@ def load_data(file_path):
     
     return df
 
-def prepare_recent_draws(df):
-    """Prepare recent draws for prediction"""
+def prepare_recent_draws(df, feature_columns):
+    """Prepare recent draws for prediction ensuring feature alignment"""
     # Convert lists in 'numbers' column to individual columns
     numbers_df = pd.DataFrame(df['numbers'].tolist(), index=df.index)
-    return numbers_df
+    prepared_df = pd.concat([df.drop(columns=['numbers']), numbers_df], axis=1)
+
+    # Ensure the columns match the training features
+    for col in feature_columns:
+        if col not in prepared_df.columns:
+            prepared_df[col] = 0  # Add missing columns with default value 0
+
+    # Reorder columns to match the training feature columns
+    prepared_df = prepared_df[feature_columns]
+
+    return prepared_df
 
 def main():
     # Initialize predictor
@@ -43,10 +62,17 @@ def main():
     model_path = f'{models_dir}/lottery_predictor_{timestamp}'
     predictor.load_models(model_path)
     
+    # Extract the feature columns used during training
+    feature_columns = list(predictor.models[1].feature_names_in_)
+
     # Generate prediction for next draw
     print("\nGenerating prediction for next draw...")
     recent_draws = historical_data.tail(5).drop(columns=['date'])
-    recent_draws_prepared = prepare_recent_draws(recent_draws)
+    
+    # Prepare recent draws for prediction with correct feature alignment
+    recent_draws_prepared = prepare_recent_draws(recent_draws, feature_columns)
+    
+    # Generate prediction
     predicted_numbers, probabilities = predictor.predict(recent_draws_prepared)
     
     # Sort predicted numbers

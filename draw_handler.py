@@ -155,73 +155,91 @@ def get_ml_prediction(csv_file='historical_draws.csv'):
         # Check if CSV file exists
         if not os.path.exists(csv_file):
             print(f"\nError: No historical data found at {csv_file}")
-            print("Please use option 3 first to collect some draws.")
+            print("Please use option 3 first to collect draws.")
             return None
             
         # Load historical data
         historical_data = pd.read_csv(csv_file)
-        
-        # Verify data format
-        required_columns = ['date'] + [f'number{i}' for i in range(1, 21)]
-        missing_columns = [col for col in required_columns if col not in historical_data.columns]
-        if missing_columns:
-            print(f"\nError: Missing columns in data: {missing_columns}")
-            print("Please ensure your data has 'date' and 'number1' through 'number20' columns.")
-            return None
-        
-        # Check if we have enough historical data (need at least 6 draws)
-        if len(historical_data) < 6:
-            print(f"\nNot enough historical data. Need at least 6 draws, but only have {len(historical_data)}.")
-            print("Please use option 3 to collect more draws.")
-            return None
-        
-        print(f"\nFound {len(historical_data)} historical draws in database.")
         
         # Initialize predictor
         predictor = LotteryMLPredictor(numbers_range=(1, 80), numbers_to_draw=20)
         
         # Load existing models if available
         models_dir = 'ml_models'
-        latest_model = None
-        if os.path.exists(models_dir):
+        model_base = None
+        
+        # Try to read the timestamp from the file first
+        if os.path.exists('model_timestamp.txt'):
+            try:
+                with open('model_timestamp.txt', 'r') as f:
+                    timestamp = f.read().strip()
+                    model_base = f'{models_dir}/lottery_predictor_{timestamp}'
+                    print(f"Loading model from {model_base}")
+            except Exception as e:
+                print(f"Error reading timestamp file: {str(e)}")
+        
+        # If no timestamp file or model not found, try to find the latest model file
+        if not model_base:
+            print("No timestamp file found, searching for latest model...")
             model_files = [f for f in os.listdir(models_dir) if f.endswith('_model.pkl')]
             if model_files:
-                latest_model = os.path.join(models_dir, max(model_files))
+                latest = max(model_files)
+                model_base = os.path.join(models_dir, latest.replace('_model.pkl', ''))
+                print(f"Found latest model: {model_base}")
         
-        if latest_model:
+        if model_base and os.path.exists(f"{model_base}_1_model.pkl"):
             print("Loading existing ML models...")
-            predictor.load_models(latest_model.replace('_model.pkl', ''))
-        else:
-            print("Training new ML models...")
-            # Prepare and train models
-            X, y = predictor.prepare_data(historical_data)
-            predictor.train_models(X, y)
+            predictor.load_models(model_base)
             
-            # Save models
-            os.makedirs(models_dir, exist_ok=True)
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            predictor.save_models(f'{models_dir}/lottery_predictor_{timestamp}')
-        
-        # Generate prediction
-        recent_draws = historical_data.tail(5)
-        predicted_numbers, probabilities = predictor.predict(recent_draws)
-        
-        # Display prediction results
-        print("\n=== ML Prediction Results ===")
-        print("Predicted numbers for next draw:", sorted(predicted_numbers))
-        
-        print("\nTop 10 most likely numbers and their probabilities:")
-        number_probs = [(number, prob) for number, prob in zip(predicted_numbers, probabilities)]
-        number_probs.sort(key=lambda x: x[1], reverse=True)
-        for number, prob in number_probs[:10]:
-            print(f"Number {number}: {prob:.4f}")
-        
-        # Save predictions to Excel
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        save_predictions_to_excel([num for num, _ in number_probs[:10]], [prob for _, prob in number_probs[:10]], timestamp)
-        
-        return predicted_numbers
-        
+            # Prepare recent draws for prediction
+            number_cols = [f'number{i}' for i in range(1, 21)]
+            recent_draws = historical_data.tail(5)[number_cols]
+            
+            # Generate prediction
+            predicted_numbers, probabilities = predictor.predict(recent_draws)
+            
+            # Display prediction results
+            print("\n=== ML Prediction Results ===")
+            print("Predicted numbers for next draw:", sorted(predicted_numbers))
+            
+            print("\nTop 10 most likely numbers and their probabilities:")
+            number_probs = [(number, prob) for number, prob in zip(range(1, 81), probabilities[0])]
+            number_probs.sort(key=lambda x: x[1], reverse=True)
+            
+            # Save top 10 predictions to Excel
+            predictions_dir = 'data/processed'
+            os.makedirs(predictions_dir, exist_ok=True)
+            
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            predictions_data = {
+                'Timestamp': [timestamp] * 10,
+                'Number': [num for num, _ in number_probs[:10]],
+                'Probability': [prob for _, prob in number_probs[:10]]
+            }
+            
+            predictions_df = pd.DataFrame(predictions_data)
+            predictions_file = os.path.join(predictions_dir, 'predictions.xlsx')
+            
+            if os.path.exists(predictions_file):
+                with pd.ExcelWriter(predictions_file, mode='a', engine='openpyxl', 
+                                  if_sheet_exists='overlay') as writer:
+                    predictions_df.to_excel(writer, sheet_name='Predictions', 
+                                         header=not os.path.exists(predictions_file),
+                                         index=False)
+            else:
+                predictions_df.to_excel(predictions_file, sheet_name='Predictions', index=False)
+            
+            print("\nPrediction results:")
+            for number, prob in number_probs[:10]:
+                print(f"Number {number:2d}: {prob:.4f}")
+            
+            print(f"\nPredictions saved to {predictions_file}")
+            
+            return predicted_numbers
+        else:
+            print(f"\nError: No valid model files found in {models_dir}")
+            return None
+            
     except Exception as e:
         print(f"\nError in ML prediction: {str(e)}")
         print("\nDebug information:")
